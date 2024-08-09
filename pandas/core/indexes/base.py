@@ -2910,13 +2910,11 @@ class Index(IndexOpsMixin, PandasObject):
         return self + other
 
     @final
-    def __nonzero__(self) -> NoReturn:
+    def __bool__(self) -> NoReturn:
         raise ValueError(
             f"The truth value of a {type(self).__name__} is ambiguous. "
             "Use a.empty, a.bool(), a.item(), a.any() or a.all()."
         )
-
-    __bool__ = __nonzero__
 
     # --------------------------------------------------------------------
     # Set Operation Methods
@@ -4886,7 +4884,10 @@ class Index(IndexOpsMixin, PandasObject):
             return (
                 isinstance(self.dtype, np.dtype)
                 or isinstance(self._values, (ArrowExtensionArray, BaseMaskedArray))
-                or self.dtype == "string[python]"
+                or (
+                    isinstance(self.dtype, StringDtype)
+                    and self.dtype.storage == "python"
+                )
             )
         # Exclude index types where the conversion to numpy converts to object dtype,
         #  which negates the performance benefit of libjoin
@@ -5455,9 +5456,10 @@ class Index(IndexOpsMixin, PandasObject):
 
         if (
             isinstance(self.dtype, StringDtype)
-            and self.dtype.storage == "pyarrow_numpy"
+            and self.dtype.na_value is np.nan
             and other.dtype != self.dtype
         ):
+            # TODO(infer_string) can we avoid this special case?
             # special case for object behavior
             return other.equals(self.astype(object))
 
@@ -5786,13 +5788,6 @@ class Index(IndexOpsMixin, PandasObject):
             return sorted_index, _as
         else:
             return sorted_index
-
-    @final
-    def sort(self, *args, **kwargs):
-        """
-        Use sort_values instead.
-        """
-        raise TypeError("cannot sort an Index object in-place, use sort_values instead")
 
     def shift(self, periods: int = 1, freq=None) -> Self:
         """
